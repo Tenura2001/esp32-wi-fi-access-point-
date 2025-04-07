@@ -1,0 +1,108 @@
+#include <WiFi.h>
+
+// Access point credentials
+const char *ssid = "wifiap";
+const char *password = "12345678";
+
+// LED pin
+const int ledPin = 2;
+
+// Web server
+WiFiServer server(80);
+
+// Base64-encoded red dot PNG icon (16x16)
+const char favicon[] PROGMEM = 
+  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABQklEQVR42mNgGAWjgP///8/AwPCf"
+  "MZgBQSGgFov/f//5P/7+DQaFAkUE9n+D4Z/8+X//P37+1TADs3f/Xz+//8fH//z/+//xn9fzDYDA"
+  "woDCYWBhgGBgYGBgaGhiZmBlY2BiY2RjYWFmZmBgYmDgwP+P/xP8//z+///A8P//5//p+f+v//z9"
+  "B4Dg1gNgMQ5A1TIwMDCwsLCwiAOBNIBSkewgEAQYAKEEDEG9syHwAAAABJRU5ErkJggg==";
+
+void setup() {
+  delay(2000);
+  pinMode(ledPin, OUTPUT);
+  Serial.begin(115200);
+  Serial.println();
+  Serial.println("Configuring access point...");
+
+  WiFi.softAP(ssid, password);
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(myIP);
+
+  server.begin();
+  Serial.println("Server started");
+}
+
+void loop() {
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  Serial.println("New Client.");
+  String currentLine = "";
+
+  while (client.connected()) {
+    if (client.available()) {
+      char c = client.read();
+      Serial.write(c);
+      if (c == '\n') {
+        if (currentLine.length() == 0) {
+          // Send web page
+          client.println("HTTP/1.1 200 OK");
+          client.println("Content-type:text/html");
+          client.println();
+
+          client.println("<!DOCTYPE html><html><head>");
+          client.println("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+          client.println("<title>ESP32 LED Control</title>");
+          client.println("<link rel=\"icon\" href=\"/favicon.ico\" type=\"image/x-icon\">");
+
+          // Styling
+          client.println("<style>");
+          client.println("body { font-family: Arial; background-color: #f2f2f2; text-align: center; padding-top: 50px; }");
+          client.println("h1 { color: #333; }");
+          client.println(".button { padding: 16px 32px; margin: 20px; font-size: 20px; border: none;");
+          client.println("border-radius: 8px; cursor: pointer; transition: 0.3s; }");
+          client.println(".on { background-color: #4CAF50; color: white; }");
+          client.println(".on:hover { background-color: #45a049; }");
+          client.println(".off { background-color: #f44336; color: white; }");
+          client.println(".off:hover { background-color: #da190b; }");
+          client.println("</style>");
+
+          client.println("</head><body>");
+          client.println("<h1>ESP32 LED Control</h1>");
+          client.println("<a href=\"/H\"><button class=\"button on\">Turn ON</button></a>");
+          client.println("<a href=\"/L\"><button class=\"button off\">Turn OFF</button></a>");
+          client.println("</body></html>");
+
+          client.println();
+          break;
+        } else {
+          // Handle LED control
+          if (currentLine.indexOf("GET /favicon.ico") >= 0) {
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-Type: image/x-icon");
+            client.println("Content-Length: " + String(strlen(favicon)));
+            client.println("Connection: close");
+            client.println();
+            client.print(favicon);  // Send favicon image
+            break;
+          }
+          if (currentLine.indexOf("GET /H") >= 0) {
+            digitalWrite(ledPin, HIGH);
+            Serial.println("LED ON");
+          }
+          if (currentLine.indexOf("GET /L") >= 0) {
+            digitalWrite(ledPin, LOW);
+            Serial.println("LED OFF");
+          }
+          currentLine = "";
+        }
+      } else if (c != '\r') {
+        currentLine += c;
+      }
+    }
+  }
+
+  client.stop();
+  Serial.println("Client Disconnected.");
+}
